@@ -457,6 +457,7 @@ pub struct AIConfigInput {
     pub provider: String,
     pub api_key: String,
     pub model: Option<String>,
+    pub effort: Option<String>,
 }
 
 #[tauri::command]
@@ -469,20 +470,33 @@ pub async fn ai_configure(
         "anthropic" => AIProvider::Anthropic,
         "openai" => AIProvider::OpenAI,
         "google" => AIProvider::Google,
-        _ => return Err("Invalid provider. Use 'anthropic', 'openai', or 'google'.".into()),
+        "codex" => AIProvider::Codex,
+        _ => return Err("Invalid provider. Use 'anthropic', 'openai', 'google', or 'codex'.".into()),
     };
+
+    // Codex reuses the Codex CLI login — no API key required.
+    if provider != AIProvider::Codex && input.api_key.trim().is_empty() {
+        return Err("API key is required.".into());
+    }
 
     let model = input.model.unwrap_or_else(|| {
         match provider {
             AIProvider::Anthropic => "claude-sonnet-4-6".into(),
             AIProvider::OpenAI => "gpt-4.1".into(),
             AIProvider::Google => "gemini-2.5-flash-lite".into(),
+            AIProvider::Codex => "gpt-5.5".into(),
         }
     });
 
+    let effort = if provider == AIProvider::Codex {
+        Some(input.effort.unwrap_or_else(|| "medium".into()))
+    } else {
+        None
+    };
+
     // Persist to local database
     local_db
-        .save_ai_config(&input.provider, &model, &input.api_key)
+        .save_ai_config(&input.provider, &model, &input.api_key, effort.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -490,10 +504,34 @@ pub async fn ai_configure(
         provider,
         api_key: input.api_key,
         model,
+        effort,
     })
     .await;
 
     Ok(())
+}
+
+#[derive(Debug, Serialize)]
+pub struct CodexStatus {
+    pub available: bool,
+    pub account_id: Option<String>,
+    pub error: Option<String>,
+}
+
+#[tauri::command]
+pub async fn ai_codex_status() -> Result<CodexStatus, String> {
+    match crate::ai::CodexAuth::load() {
+        Ok(auth) => Ok(CodexStatus {
+            available: true,
+            account_id: Some(auth.account_id),
+            error: None,
+        }),
+        Err(e) => Ok(CodexStatus {
+            available: false,
+            account_id: None,
+            error: Some(e.to_string()),
+        }),
+    }
 }
 
 #[tauri::command]
@@ -505,6 +543,7 @@ pub async fn ai_status(ai: State<'_, AIService>) -> Result<bool, String> {
 pub struct AIConfigResponse {
     pub provider: String,
     pub model: String,
+    pub effort: Option<String>,
 }
 
 #[tauri::command]
@@ -512,7 +551,9 @@ pub async fn ai_get_config(
     local_db: State<'_, LocalDb>,
 ) -> Result<Option<AIConfigResponse>, String> {
     match local_db.get_ai_config().await.map_err(|e| e.to_string())? {
-        Some((provider, model, _)) => Ok(Some(AIConfigResponse { provider, model })),
+        Some((provider, model, _, effort)) => {
+            Ok(Some(AIConfigResponse { provider, model, effort }))
+        }
         None => Ok(None),
     }
 }

@@ -111,7 +111,8 @@ pub async fn init_local_db(app_handle: &AppHandle) -> Result<()> {
             id INTEGER PRIMARY KEY CHECK (id = 1),
             provider TEXT NOT NULL,
             model TEXT NOT NULL,
-            api_key TEXT NOT NULL
+            api_key TEXT NOT NULL,
+            effort TEXT
         );
 
         CREATE TABLE IF NOT EXISTS ai_prompts (
@@ -139,6 +140,9 @@ pub async fn init_local_db(app_handle: &AppHandle) -> Result<()> {
         "ALTER TABLE ai_prompts ADD COLUMN generated_sql TEXT NOT NULL DEFAULT ''",
         [],
     );
+
+    // Migration: add effort column to ai_config (Codex provider reasoning effort)
+    let _ = conn.execute("ALTER TABLE ai_config ADD COLUMN effort TEXT", []);
 
     // Store in app state
     let local_db = LocalDb {
@@ -321,11 +325,17 @@ impl LocalDb {
         Ok(pw)
     }
 
-    pub async fn save_ai_config(&self, provider: &str, model: &str, api_key: &str) -> Result<()> {
+    pub async fn save_ai_config(
+        &self,
+        provider: &str,
+        model: &str,
+        api_key: &str,
+        effort: Option<&str>,
+    ) -> Result<()> {
         let db = self.conn.lock().await;
         db.execute(
-            "INSERT OR REPLACE INTO ai_config (id, provider, model, api_key) VALUES (1, ?1, ?2, ?3)",
-            rusqlite::params![provider, model, api_key],
+            "INSERT OR REPLACE INTO ai_config (id, provider, model, api_key, effort) VALUES (1, ?1, ?2, ?3, ?4)",
+            rusqlite::params![provider, model, api_key, effort],
         )?;
         Ok(())
     }
@@ -352,12 +362,14 @@ impl LocalDb {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
-    pub async fn get_ai_config(&self) -> Result<Option<(String, String, String)>> {
+    pub async fn get_ai_config(
+        &self,
+    ) -> Result<Option<(String, String, String, Option<String>)>> {
         let db = self.conn.lock().await;
         let result = db.query_row(
-            "SELECT provider, model, api_key FROM ai_config WHERE id = 1",
+            "SELECT provider, model, api_key, effort FROM ai_config WHERE id = 1",
             [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         );
         match result {
             Ok(config) => Ok(Some(config)),

@@ -1,13 +1,20 @@
+use crate::ai::codex_auth::{CodexAuth, API_BASE as CODEX_API_BASE};
 use crate::ai::context::SchemaContext;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
+
+/// Fast, cheap model used for inline autocomplete on the Codex provider.
+const CODEX_AUTOCOMPLETE_MODEL: &str = "gpt-5.4-mini";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AIConfig {
     pub provider: AIProvider,
     pub api_key: String,
     pub model: String,
+    /// Reasoning effort (low/medium/high) — only meaningful for the Codex provider.
+    #[serde(default)]
+    pub effort: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -16,6 +23,15 @@ pub enum AIProvider {
     Anthropic,
     OpenAI,
     Google,
+    Codex,
+}
+
+/// Distinguishes latency-sensitive autocomplete from standard calls so the Codex
+/// path can pick a faster model/effort for inline completion.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum CallKind {
+    Standard,
+    Autocomplete,
 }
 
 impl Default for AIConfig {
@@ -24,6 +40,7 @@ impl Default for AIConfig {
             provider: AIProvider::Anthropic,
             api_key: String::new(),
             model: "claude-sonnet-4-6".into(),
+            effort: None,
         }
     }
 }
@@ -138,11 +155,15 @@ impl AIService {
              Database schema:\n{ddl}"
         );
         let prompt = format!("{prefix}<CURSOR>{suffix}");
-        self.chat(&system, &prompt).await
+        self.chat_kind(&system, &prompt, CallKind::Autocomplete).await
     }
 
     /// General chat
     pub async fn chat(&self, system: &str, user_message: &str) -> Result<String> {
+        self.chat_kind(system, user_message, CallKind::Standard).await
+    }
+
+    async fn chat_kind(&self, system: &str, user_message: &str, kind: CallKind) -> Result<String> {
         let config = self.config.read().await;
         let config = config
             .as_ref()
@@ -152,6 +173,7 @@ impl AIService {
             AIProvider::Anthropic => self.call_anthropic(config, system, user_message).await,
             AIProvider::OpenAI => self.call_openai(config, system, user_message).await,
             AIProvider::Google => self.call_google_gemini(config, system, user_message).await,
+            AIProvider::Codex => self.call_codex(config, system, user_message, kind).await,
         }
     }
 
@@ -234,6 +256,67 @@ impl AIService {
         Ok(content)
     }
 
+    /// Call the ChatGPT backend Responses API reusing the Codex CLI login.
+    /// Streaming + store:false are mandatory; the answer is reconstructed from
+    /// `response.output_text.delta` SSE events.
+    async fn call_codex(
+        &self,
+        config: &AIConfig,
+        system: &str,
+        user_message: &str,
+        kind: CallKind,
+    ) -> Result<String> {
+        let mut auth = CodexAuth::load()?;
+        auth.ensure_fresh(&self.http_client).await?;
+
+        let (model, effort) = match kind {
+            CallKind::Autocomplete => (CODEX_AUTOCOMPLETE_MODEL.to_string(), "none".to_string()),
+            CallKind::Standard => (
+                config.model.clone(),
+                config.effort.clone().unwrap_or_else(|| "medium".into()),
+            ),
+        };
+
+        let body = serde_json::json!({
+            "model": model,
+            "instructions": system,
+            "input": [{
+                "role": "user",
+                "content": [{ "type": "input_text", "text": user_message }]
+            }],
+            "reasoning": { "effort": effort },
+            "store": false,
+            "stream": true,
+        });
+
+        let resp = self
+            .http_client
+            .post(CODEX_API_BASE)
+            .header("Authorization", format!("Bearer {}", auth.access_token))
+            .header("ChatGPT-Account-Id", &auth.account_id)
+            .header("originator", "codex_cli_rs")
+            .header("OpenAI-Beta", "responses=experimental")
+            .header("Content-Type", "application/json")
+            .header("Accept", "text/event-stream")
+            .json(&body)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        let text = resp.text().await?;
+
+        if !status.is_success() {
+            if status.as_u16() == 401 {
+                return Err(anyhow::anyhow!(
+                    "Login do Codex expirado ou inválido. Rode `codex login` e tente novamente."
+                ));
+            }
+            return Err(anyhow::anyhow!("Codex API error ({}): {}", status, text));
+        }
+
+        Ok(parse_responses_sse(&text))
+    }
+
     async fn call_google_gemini(
         &self,
         config: &AIConfig,
@@ -294,6 +377,32 @@ impl AIService {
     }
 }
 
+/// Reconstruct the assistant text from a Responses API SSE stream by concatenating
+/// `response.output_text.delta` events. The final `response.completed` event carries
+/// an empty `output`, so deltas are the source of truth.
+fn parse_responses_sse(body: &str) -> String {
+    let mut out = String::new();
+    for line in body.lines() {
+        let data = match line.strip_prefix("data:") {
+            Some(d) => d.trim(),
+            None => continue,
+        };
+        if data == "[DONE]" || data.is_empty() {
+            continue;
+        }
+        let event: serde_json::Value = match serde_json::from_str(data) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if event.get("type").and_then(|t| t.as_str()) == Some("response.output_text.delta") {
+            if let Some(delta) = event.get("delta").and_then(|d| d.as_str()) {
+                out.push_str(delta);
+            }
+        }
+    }
+    out
+}
+
 /// Strip markdown code fences from AI responses (```sql ... ``` or ``` ... ```)
 fn strip_code_fences(s: &str) -> String {
     let trimmed = s.trim();
@@ -309,5 +418,16 @@ fn strip_code_fences(s: &str) -> String {
         rest.trim().to_string()
     } else {
         trimmed.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parser_extracts_deltas() {
+        let sse = "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"po\"}\n\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"ng\"}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"output\":[]}}\n";
+        assert_eq!(parse_responses_sse(sse), "pong");
     }
 }
