@@ -1,9 +1,12 @@
 import { useConnectionStore, useIsConnected } from "@/stores/connection-store";
+import { useAIStore } from "@/stores/ai-store";
+import { Cpu } from "lucide-react";
 
 export function StatusBar() {
   const { activeConnectionId, connections, connectedIds } = useConnectionStore();
   const isConnected = useIsConnected();
   const conn = connections.find((c) => c.id === activeConnectionId);
+  const aiConfig = useAIStore((s) => s.aiConfig);
 
   return (
     <footer
@@ -32,6 +35,16 @@ export function StatusBar() {
         )}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        {aiConfig && (
+          <>
+            <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+              <Cpu size={12} />
+              {aiConfig.model}
+              {aiConfig.effort && <span style={{ opacity: 0.7 }}>· {aiConfig.effort}</span>}
+            </span>
+            <span style={{ width: "1px", height: "14px", backgroundColor: "var(--color-border)" }} />
+          </>
+        )}
         <span>PgStudio v0.1.0</span>
       </div>
     </footer>
