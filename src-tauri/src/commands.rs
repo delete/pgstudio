@@ -107,6 +107,50 @@ pub async fn execute_query(
 }
 
 #[tauri::command]
+pub async fn switch_database(
+    connection_id: String,
+    database: String,
+    manager: State<'_, ConnectionManager>,
+    local_db: State<'_, LocalDb>,
+) -> Result<(), String> {
+    // Get connection record + password from local DB
+    let conns = local_db.list_connections().await.map_err(|e| e.to_string())?;
+    let record = conns.iter().find(|c| c.id == connection_id)
+        .ok_or_else(|| "Connection not found".to_string())?;
+    let password = local_db.get_connection_password(&connection_id).await.map_err(|e| e.to_string())?;
+
+    // Disconnect current
+    let _ = manager.disconnect(&connection_id).await;
+
+    // Reconnect with the new database name
+    let config = ConnectionConfig {
+        id: connection_id.clone(),
+        name: record.name.clone(),
+        host: record.host.clone(),
+        port: record.port as u16,
+        database,
+        user: record.user.clone(),
+        password,
+        ssl_mode: Default::default(),
+        color: record.color.clone(),
+    };
+
+    manager.connect(&config).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_databases(
+    connection_id: String,
+    manager: State<'_, ConnectionManager>,
+) -> Result<Vec<db::DatabaseInfo>, String> {
+    let client = manager
+        .get_client(&connection_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    db::get_databases(&client).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn get_schemas(
     connection_id: String,
     manager: State<'_, ConnectionManager>,
@@ -150,12 +194,69 @@ pub async fn get_columns(
 }
 
 #[tauri::command]
+pub async fn get_constraints(
+    connection_id: String,
+    schema: String,
+    table: String,
+    manager: State<'_, ConnectionManager>,
+) -> Result<Vec<db::ConstraintInfo>, String> {
+    let client = manager.get_client(&connection_id).await.map_err(|e| e.to_string())?;
+    db::get_constraints(&client, &schema, &table).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_indexes(
+    connection_id: String,
+    schema: String,
+    table: String,
+    manager: State<'_, ConnectionManager>,
+) -> Result<Vec<db::IndexInfo>, String> {
+    let client = manager.get_client(&connection_id).await.map_err(|e| e.to_string())?;
+    db::get_indexes(&client, &schema, &table).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_triggers(
+    connection_id: String,
+    schema: String,
+    table: String,
+    manager: State<'_, ConnectionManager>,
+) -> Result<Vec<db::TriggerInfo>, String> {
+    let client = manager.get_client(&connection_id).await.map_err(|e| e.to_string())?;
+    db::get_triggers(&client, &schema, &table).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_rules(
+    connection_id: String,
+    schema: String,
+    table: String,
+    manager: State<'_, ConnectionManager>,
+) -> Result<Vec<db::RuleInfo>, String> {
+    let client = manager.get_client(&connection_id).await.map_err(|e| e.to_string())?;
+    db::get_rules(&client, &schema, &table).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_policies(
+    connection_id: String,
+    schema: String,
+    table: String,
+    manager: State<'_, ConnectionManager>,
+) -> Result<Vec<db::PolicyInfo>, String> {
+    let client = manager.get_client(&connection_id).await.map_err(|e| e.to_string())?;
+    db::get_policies(&client, &schema, &table).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn get_table_data(
     connection_id: String,
     schema: String,
     table: String,
     limit: Option<i64>,
     offset: Option<i64>,
+    sort_column: Option<String>,
+    sort_direction: Option<String>,
     manager: State<'_, ConnectionManager>,
 ) -> Result<db::QueryResult, String> {
     let client = manager
@@ -164,14 +265,39 @@ pub async fn get_table_data(
         .map_err(|e| e.to_string())?;
     let limit = limit.unwrap_or(100);
     let offset = offset.unwrap_or(0);
+    let order_clause = match sort_column {
+        Some(ref col) if !col.is_empty() => {
+            let dir = match sort_direction.as_deref() {
+                Some("DESC") | Some("desc") => "DESC",
+                _ => "ASC",
+            };
+            format!(" ORDER BY {} {}", quote_ident(col), dir)
+        }
+        _ => String::new(),
+    };
     let sql = format!(
-        "SELECT * FROM {}.{} LIMIT {} OFFSET {}",
+        "SELECT * FROM {}.{}{} LIMIT {} OFFSET {}",
         quote_ident(&schema),
         quote_ident(&table),
+        order_clause,
         limit,
         offset
     );
     db::execute_query(&client, &sql)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn search_table_history(
+    connection_id: String,
+    table_name: String,
+    limit: Option<i64>,
+    local_db: State<'_, LocalDb>,
+) -> Result<Vec<QueryHistoryEntry>, String> {
+    let limit = limit.unwrap_or(10);
+    local_db
+        .search_table_history(&connection_id, &table_name, limit)
         .await
         .map_err(|e| e.to_string())
 }
@@ -219,14 +345,15 @@ pub async fn delete_connection(
 
 #[tauri::command]
 pub async fn get_query_history(
-    connection_id: String,
+    connection_id: Option<String>,
     limit: Option<i64>,
     local_db: State<'_, LocalDb>,
 ) -> Result<Vec<QueryHistoryEntry>, String> {
-    local_db
-        .get_history(&connection_id, limit.unwrap_or(50))
-        .await
-        .map_err(|e| e.to_string())
+    let limit = limit.unwrap_or(50);
+    match connection_id {
+        Some(id) => local_db.get_history(&id, limit).await.map_err(|e| e.to_string()),
+        None => local_db.get_all_history(limit).await.map_err(|e| e.to_string()),
+    }
 }
 
 #[tauri::command]
@@ -341,13 +468,15 @@ pub async fn ai_configure(
     let provider = match input.provider.as_str() {
         "anthropic" => AIProvider::Anthropic,
         "openai" => AIProvider::OpenAI,
-        _ => return Err("Invalid provider. Use 'anthropic' or 'openai'.".into()),
+        "google" => AIProvider::Google,
+        _ => return Err("Invalid provider. Use 'anthropic', 'openai', or 'google'.".into()),
     };
 
     let model = input.model.unwrap_or_else(|| {
         match provider {
             AIProvider::Anthropic => "claude-sonnet-4-6".into(),
             AIProvider::OpenAI => "gpt-4.1".into(),
+            AIProvider::Google => "gemini-2.5-flash-lite".into(),
         }
     });
 
@@ -370,6 +499,22 @@ pub async fn ai_configure(
 #[tauri::command]
 pub async fn ai_status(ai: State<'_, AIService>) -> Result<bool, String> {
     Ok(ai.is_configured().await)
+}
+
+#[derive(Debug, Serialize)]
+pub struct AIConfigResponse {
+    pub provider: String,
+    pub model: String,
+}
+
+#[tauri::command]
+pub async fn ai_get_config(
+    local_db: State<'_, LocalDb>,
+) -> Result<Option<AIConfigResponse>, String> {
+    match local_db.get_ai_config().await.map_err(|e| e.to_string())? {
+        Some((provider, model, _)) => Ok(Some(AIConfigResponse { provider, model })),
+        None => Ok(None),
+    }
 }
 
 #[derive(Debug, Serialize)]

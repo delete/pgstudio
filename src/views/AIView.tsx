@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useConnectionStore } from "@/stores/connection-store";
+import { useIsConnected, useActiveSchemaContext } from "@/stores/connection-store";
 import { aiChat, aiStatus } from "@/lib/tauri";
 import { Bot, Send, User } from "lucide-react";
 
@@ -10,7 +10,8 @@ interface Message {
 }
 
 export function AIView() {
-  const { schemaContext, isConnected } = useConnectionStore();
+  const isConnected = useIsConnected();
+  const schemaContext = useActiveSchemaContext();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);

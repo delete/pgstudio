@@ -35,5 +35,12 @@ export const OPENAI_MODELS: ModelOption[] = [
   { value: "gpt-4o-mini", label: "GPT-4o Mini" },
 ];
 
+export const GEMINI_MODELS: ModelOption[] = [
+  { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite", description: "Fastest and most cost-efficient" },
+  { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash", description: "Balanced speed and quality" },
+  { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro", description: "Best quality for complex tasks" },
+];
+
 export const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6";
 export const DEFAULT_OPENAI_MODEL = "gpt-4.1";
+export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-lite";

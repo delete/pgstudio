@@ -1,7 +1,8 @@
-import { useConnectionStore } from "@/stores/connection-store";
+import { useConnectionStore, useIsConnected } from "@/stores/connection-store";
 
 export function StatusBar() {
-  const { activeConnectionId, connections, isConnected } = useConnectionStore();
+  const { activeConnectionId, connections, connectedIds } = useConnectionStore();
+  const isConnected = useIsConnected();
   const conn = connections.find((c) => c.id === activeConnectionId);
 
   return (
@@ -22,6 +23,11 @@ export function StatusBar() {
         {conn && isConnected && (
           <span>
             {conn.user}@{conn.host}:{conn.port}/{conn.database}
+          </span>
+        )}
+        {connectedIds.length > 1 && (
+          <span style={{ opacity: 0.7 }}>
+            ({connectedIds.length} connections)
           </span>
         )}
       </div>

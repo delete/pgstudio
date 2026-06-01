@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { SQLEditor } from "@/components/editor/SQLEditor";
 import { DataGrid } from "@/components/table/DataGrid";
-import { useConnectionStore } from "@/stores/connection-store";
+import { useConnectionStore, useIsConnected, useActiveSchemaContext } from "@/stores/connection-store";
 import {
   executeQuery,
   aiNlToSql,
@@ -45,8 +45,10 @@ function createTab(): Tab {
 }
 
 export function SQLEditorView() {
-  const { activeConnectionId, isConnected, schemaContext } =
+  const { activeConnectionId, pendingSql, pendingSqlAutoRun, setPendingSql } =
     useConnectionStore();
+  const isConnected = useIsConnected();
+  const schemaContext = useActiveSchemaContext();
   const [tabs, setTabs] = useState<Tab[]>([createTab()]);
   const [activeTabId, setActiveTabId] = useState(tabs[0].id);
   const [isExecuting, setIsExecuting] = useState(false);
@@ -86,6 +88,27 @@ export function SQLEditorView() {
     }
     return Array.from(map.values());
   }, [rawHistory]);
+
+  // Tab that should be auto-executed after creation
+  const [autoRunTabId, setAutoRunTabId] = useState<string | null>(null);
+
+  // Pick up pending SQL from context menu / other views
+  useEffect(() => {
+    if (!pendingSql) return;
+    const newTab: Tab = {
+      id: crypto.randomUUID(),
+      name: `Query ${tabCounter++}`,
+      sql: pendingSql,
+      result: null,
+      error: null,
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newTab.id);
+    if (pendingSqlAutoRun) {
+      setAutoRunTabId(newTab.id);
+    }
+    setPendingSql(null);
+  }, [pendingSql, pendingSqlAutoRun, setPendingSql]);
 
   // Load recent queries
   useEffect(() => {
@@ -155,11 +178,10 @@ export function SQLEditorView() {
     if (!schemaContext) return undefined;
     const schema: Record<string, string[]> = {};
     for (const table of schemaContext.tables) {
-      const key =
-        table.schema === "public"
-          ? table.name
-          : `${table.schema}.${table.name}`;
-      schema[key] = table.columns.map((c) => c.name);
+      const cols = table.columns.map((c) => c.name);
+      // Add both short name and fully-qualified name so completions work either way
+      schema[table.name] = cols;
+      schema[`${table.schema}.${table.name}`] = cols;
     }
     return schema;
   }, [schemaContext]);
@@ -172,6 +194,20 @@ export function SQLEditorView() {
     },
     [],
   );
+
+  // Auto-execute a tab created with autoRun flag
+  useEffect(() => {
+    if (!autoRunTabId || !activeConnectionId) return;
+    const tab = tabs.find((t) => t.id === autoRunTabId);
+    if (!tab || !tab.sql.trim()) { setAutoRunTabId(null); return; }
+    setAutoRunTabId(null);
+    setIsExecuting(true);
+    updateTab(tab.id, { error: null, result: null });
+    executeQuery(activeConnectionId, tab.sql.trim())
+      .then((res) => { updateTab(tab.id, { result: res, error: null }); refreshRecent(); })
+      .catch((e) => { updateTab(tab.id, { error: String(e), result: null }); refreshRecent(); })
+      .finally(() => setIsExecuting(false));
+  }, [autoRunTabId, activeConnectionId, tabs, updateTab, refreshRecent]);
 
   const addTab = () => {
     const tab = createTab();
@@ -473,8 +509,8 @@ export function SQLEditorView() {
         </div>
 
         {/* NL-to-SQL bar */}
-        <div style={{ display: "flex", gap: "12px", borderBottom: "1px solid var(--color-border)", backgroundColor: "var(--color-bg-secondary)", padding: "12px 16px", flexShrink: 0 }}>
-          <Bot size={14} style={{ color: "var(--color-accent)", flexShrink: 0, marginTop: "4px" }} />
+        <div style={{ display: "flex", gap: "12px", borderBottom: "1px solid var(--color-border)", backgroundColor: "var(--color-bg-secondary)", padding: "14px 20px", flexShrink: 0, alignItems: "flex-start" }}>
+          <Bot size={16} style={{ color: "var(--color-accent)", flexShrink: 0, marginTop: "6px" }} />
           <div style={{ flex: 1, position: "relative" }}>
             <textarea
               value={aiPrompt}
@@ -508,7 +544,7 @@ export function SQLEditorView() {
                 }
               }}
               placeholder="Describe what you want in plain English..."
-              rows={2}
+              rows={1}
               autoComplete="off"
               autoCorrect="off"
               autoCapitalize="off"
@@ -516,14 +552,16 @@ export function SQLEditorView() {
               style={{
                 width: "100%",
                 backgroundColor: "transparent",
-                fontSize: "13px",
+                fontSize: "14px",
                 color: "var(--color-text-primary)",
                 outline: "none",
                 border: "none",
                 resize: "vertical",
-                minHeight: "36px",
-                lineHeight: 1.5,
+                minHeight: "24px",
+                maxHeight: "120px",
+                lineHeight: 1.6,
                 fontFamily: "inherit",
+                padding: "4px 0",
               }}
             />
             {/* Autocomplete dropdown */}
@@ -582,26 +620,26 @@ export function SQLEditorView() {
             style={{
               display: "flex",
               alignItems: "center",
-              alignSelf: "flex-end",
               gap: "6px",
               borderRadius: "8px",
               backgroundColor: "rgba(62,207,142,0.1)",
-              padding: "6px 12px",
-              fontSize: "12px",
+              padding: "8px 14px",
+              fontSize: "13px",
               color: "var(--color-accent)",
               border: "none",
               cursor: "pointer",
               opacity: (aiLoading || !aiPrompt.trim()) ? 0.5 : 1,
               flexShrink: 0,
+              marginTop: "2px",
             }}
           >
-            <Sparkles size={11} />
+            <Sparkles size={12} />
             {aiLoading ? "Generating..." : "Generate SQL"}
           </button>
         </div>
 
         {/* Editor */}
-        <div style={{ height: `${editorHeight}px`, flexShrink: 0, overflow: "hidden" }}>
+        <div style={{ height: `${editorHeight}px`, flexShrink: 0, overflow: "auto" }}>
           <SQLEditor
             value={activeTab.sql}
             onChange={(sql) => updateTab(activeTab.id, { sql })}

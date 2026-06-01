@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Copy, Download, Trash2, ChevronDown, Check } from "lucide-react";
+import { Copy, Download, Trash2, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Check, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import type { ColumnDef } from "@/lib/tauri";
 import { exportFile } from "@/lib/tauri";
 
@@ -11,6 +11,18 @@ interface DataGridProps {
   tableName?: string;
   schemaName?: string;
   onDeleteRows?: (rowIndices: number[]) => void;
+  // Pagination
+  totalRows?: number | null;
+  page?: number;
+  pageSize?: number;
+  onPageChange?: (page: number) => void;
+  onPageSizeChange?: (size: number) => void;
+  rowOffset?: number;
+  // Sorting
+  sortColumn?: string | null;
+  sortDirection?: "ASC" | "DESC" | null;
+  onSortChange?: (column: string | null, direction: "ASC" | "DESC" | null) => void;
+  recentSortColumns?: string[];
 }
 
 type FormatType = "csv" | "json" | "sql" | "html";
@@ -183,6 +195,8 @@ ${trs}
     .join("\n");
 }
 
+const PAGE_SIZE_OPTIONS = [100, 200, 300, 500, 1000];
+
 export function DataGrid({
   columns,
   rows,
@@ -191,6 +205,16 @@ export function DataGrid({
   tableName,
   schemaName,
   onDeleteRows,
+  totalRows,
+  page,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
+  rowOffset = 0,
+  sortColumn,
+  sortDirection,
+  onSortChange,
+  recentSortColumns = [],
 }: DataGridProps) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [copyOpen, setCopyOpen] = useState(false);
@@ -276,6 +300,20 @@ export function DataGrid({
   }
 
   const hasSelection = selected.size > 0;
+  const hasPagination = totalRows != null && onPageChange && onPageSizeChange && page != null && pageSize != null;
+  const totalPages = hasPagination ? Math.max(1, Math.ceil(totalRows / pageSize)) : 1;
+
+  const handleColumnSort = useCallback((colName: string) => {
+    if (!onSortChange) return;
+    if (sortColumn === colName) {
+      // Cycle: ASC → DESC → none
+      if (sortDirection === "ASC") onSortChange(colName, "DESC");
+      else if (sortDirection === "DESC") onSortChange(null, null);
+      else onSortChange(colName, "ASC");
+    } else {
+      onSortChange(colName, "ASC");
+    }
+  }, [onSortChange, sortColumn, sortDirection]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -293,7 +331,9 @@ export function DataGrid({
         }}
       >
         <span>
-          {rowCount} row{rowCount !== 1 ? "s" : ""}
+          {hasPagination
+            ? `Rows ${rowOffset + 1}–${Math.min(rowOffset + rows.length, totalRows)} of ${totalRows.toLocaleString()}`
+            : `${rowCount} row${rowCount !== 1 ? "s" : ""}`}
         </span>
         {executionTime !== undefined && <span>{executionTime}ms</span>}
 
@@ -474,29 +514,42 @@ export function DataGrid({
               >
                 #
               </th>
-              {columns.map((col, i) => (
-                <th
-                  key={i}
-                  style={{
-                    position: "sticky",
-                    top: 0,
-                    zIndex: 10,
-                    borderBottom: "2px solid var(--color-border)",
-                    borderRight: "1px solid var(--color-border)",
-                    padding: "8px 16px",
-                    textAlign: "left",
-                    backgroundColor: "var(--color-bg-secondary)",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  <div style={{ fontWeight: 500, color: "var(--color-text-primary)", fontSize: "13px" }}>
-                    {col.name}
-                  </div>
-                  <div style={{ marginTop: "2px", fontSize: "11px", fontWeight: 400, color: "var(--color-text-muted)" }}>
-                    {col.data_type}
-                  </div>
-                </th>
-              ))}
+              {columns.map((col, i) => {
+                const isSorted = sortColumn === col.name;
+                return (
+                  <th
+                    key={i}
+                    onClick={onSortChange ? () => handleColumnSort(col.name) : undefined}
+                    style={{
+                      position: "sticky",
+                      top: 0,
+                      zIndex: 10,
+                      borderBottom: "2px solid var(--color-border)",
+                      borderRight: "1px solid var(--color-border)",
+                      padding: "8px 16px",
+                      textAlign: "left",
+                      backgroundColor: "var(--color-bg-secondary)",
+                      whiteSpace: "nowrap",
+                      cursor: onSortChange ? "pointer" : "default",
+                      userSelect: "none",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ fontWeight: 500, color: isSorted ? "var(--color-accent)" : "var(--color-text-primary)", fontSize: "13px" }}>
+                        {col.name}
+                      </span>
+                      {onSortChange && (
+                        <span style={{ flexShrink: 0, color: isSorted ? "var(--color-accent)" : "var(--color-text-muted)", opacity: isSorted ? 1 : 0.3 }}>
+                          {isSorted && sortDirection === "ASC" ? <ArrowUp size={12} /> : isSorted && sortDirection === "DESC" ? <ArrowDown size={12} /> : <ArrowUpDown size={12} />}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ marginTop: "2px", fontSize: "11px", fontWeight: 400, color: "var(--color-text-muted)" }}>
+                      {col.data_type}
+                    </div>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -534,7 +587,7 @@ export function DataGrid({
                       color: "var(--color-text-muted)",
                     }}
                   >
-                    {rowIdx + 1}
+                    {rowOffset + rowIdx + 1}
                   </td>
                   {row.map((cell, colIdx) => (
                     <td
@@ -569,7 +622,157 @@ export function DataGrid({
           </tbody>
         </table>
       </div>
+
+      {/* Footer: sort + pagination */}
+      {(hasPagination || onSortChange) && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: "16px",
+          borderTop: "1px solid var(--color-border)", padding: "8px 16px",
+          fontSize: "12px", color: "var(--color-text-muted)", flexShrink: 0,
+          backgroundColor: "var(--color-bg-secondary)",
+        }}>
+          {/* Sort controls */}
+          {onSortChange && (
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <ArrowUpDown size={12} style={{ flexShrink: 0, opacity: 0.6 }} />
+              <span style={{ flexShrink: 0 }}>Sort by:</span>
+              <select
+                value={sortColumn || ""}
+                onChange={(e) => {
+                  const col = e.target.value;
+                  if (!col) { onSortChange(null, null); }
+                  else { onSortChange(col, sortDirection || "ASC"); }
+                }}
+                style={{
+                  backgroundColor: "var(--color-bg-tertiary)", color: "var(--color-text-primary)",
+                  border: "1px solid var(--color-border)", borderRadius: "6px",
+                  padding: "3px 8px", fontSize: "12px", cursor: "pointer", outline: "none",
+                  maxWidth: "160px",
+                }}
+              >
+                <option value="">None</option>
+                {recentSortColumns.length > 0 && (
+                  <optgroup label="Recent">
+                    {recentSortColumns.filter((name) => columns.some((c) => c.name === name)).map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {(() => {
+                  const recentSet = new Set(recentSortColumns);
+                  const rest = [...columns].filter((c) => !recentSet.has(c.name)).sort((a, b) => a.name.localeCompare(b.name));
+                  if (rest.length === 0) return null;
+                  return (
+                    <optgroup label={recentSortColumns.length > 0 ? "All columns" : "Columns"}>
+                      {rest.map((col) => (
+                        <option key={col.name} value={col.name}>{col.name}</option>
+                      ))}
+                    </optgroup>
+                  );
+                })()}
+              </select>
+              {sortColumn && (
+                <>
+                  <button
+                    onClick={() => onSortChange(sortColumn, "ASC")}
+                    style={{
+                      display: "flex", alignItems: "center", gap: "3px",
+                      borderRadius: "6px", padding: "3px 8px", fontSize: "11px", fontWeight: 500,
+                      border: sortDirection === "ASC" ? "1px solid var(--color-accent)" : "1px solid var(--color-border)",
+                      backgroundColor: sortDirection === "ASC" ? "rgba(62,207,142,0.1)" : "transparent",
+                      color: sortDirection === "ASC" ? "var(--color-accent)" : "var(--color-text-muted)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <ArrowUp size={11} /> ASC
+                  </button>
+                  <button
+                    onClick={() => onSortChange(sortColumn, "DESC")}
+                    style={{
+                      display: "flex", alignItems: "center", gap: "3px",
+                      borderRadius: "6px", padding: "3px 8px", fontSize: "11px", fontWeight: 500,
+                      border: sortDirection === "DESC" ? "1px solid var(--color-accent)" : "1px solid var(--color-border)",
+                      backgroundColor: sortDirection === "DESC" ? "rgba(62,207,142,0.1)" : "transparent",
+                      color: sortDirection === "DESC" ? "var(--color-accent)" : "var(--color-text-muted)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <ArrowDown size={11} /> DESC
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {hasPagination && onSortChange && (
+            <div style={{ width: "1px", height: "16px", backgroundColor: "var(--color-border)", flexShrink: 0 }} />
+          )}
+
+          {/* Page size selector */}
+          {hasPagination && (
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span>Rows per page:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => onPageSizeChange(Number(e.target.value))}
+                style={{
+                  backgroundColor: "var(--color-bg-tertiary)", color: "var(--color-text-primary)",
+                  border: "1px solid var(--color-border)", borderRadius: "6px",
+                  padding: "3px 8px", fontSize: "12px", cursor: "pointer", outline: "none",
+                }}
+              >
+                {PAGE_SIZE_OPTIONS.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div style={{ flex: 1 }} />
+
+          {/* Page navigation */}
+          {hasPagination && (
+            <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+              <span style={{ marginRight: "8px" }}>
+                Page {page + 1} of {totalPages}
+              </span>
+              <PaginationBtn onClick={() => onPageChange(0)} disabled={page === 0} title="First page">
+                <ChevronsLeft size={14} />
+              </PaginationBtn>
+              <PaginationBtn onClick={() => onPageChange(page - 1)} disabled={page === 0} title="Previous page">
+                <ChevronLeft size={14} />
+              </PaginationBtn>
+              <PaginationBtn onClick={() => onPageChange(page + 1)} disabled={page >= totalPages - 1} title="Next page">
+                <ChevronRight size={14} />
+              </PaginationBtn>
+              <PaginationBtn onClick={() => onPageChange(totalPages - 1)} disabled={page >= totalPages - 1} title="Last page">
+                <ChevronsRight size={14} />
+              </PaginationBtn>
+            </div>
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+function PaginationBtn({ onClick, disabled, title, children }: {
+  onClick: () => void; disabled: boolean; title: string; children: React.ReactNode;
+}) {
+  return (
+    <button onClick={onClick} disabled={disabled} title={title} style={{
+      display: "flex", alignItems: "center", justifyContent: "center",
+      width: "28px", height: "28px", borderRadius: "6px",
+      border: "1px solid var(--color-border)", backgroundColor: "transparent",
+      color: disabled ? "var(--color-text-muted)" : "var(--color-text-primary)",
+      cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.4 : 1,
+      transition: "background-color 0.1s ease",
+    }}
+    onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)"; }}
+    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; }}
+    >
+      {children}
+    </button>
   );
 }
 

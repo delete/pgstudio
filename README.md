@@ -8,7 +8,7 @@ An AI-native PostgreSQL desktop client for macOS, Windows, and Linux. Browse sch
 - **SQL Editor** — CodeMirror-powered editor with syntax highlighting, autocomplete, and query history
 - **Table Editor** — Browse and edit table data with multi-tab support, row selection, copy/export (CSV, JSON, SQL, HTML), and row deletion
 - **Schema Browser** — Explore schemas, tables, columns, primary keys, and foreign key relationships
-- **AI Assistant** — Natural language to SQL, query explanation, optimization, and chat (Anthropic Claude or OpenAI)
+- **AI Assistant** — Natural language to SQL, query explanation, optimization, and chat (Anthropic Claude, OpenAI, or Google Gemini)
 - **Query History** — Persistent history with deduplication and run counts
 - **Saved Queries** — Bookmark frequently used queries
 - **Export** — Native file save dialog for CSV, JSON, SQL, and styled HTML exports
@@ -91,7 +91,7 @@ Output will be in `src-tauri/target/release/bundle/`.
 | Frontend | React 18, TypeScript, Vite           |
 | Editor   | CodeMirror 6                         |
 | Backend  | Rust, tokio-postgres, rusqlite       |
-| AI       | Anthropic Claude / OpenAI (optional) |
+| AI       | Anthropic Claude / OpenAI / Google Gemini (optional) |
 | State    | Zustand                              |
 | Icons    | Lucide React                         |
 

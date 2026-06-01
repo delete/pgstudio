@@ -1,9 +1,10 @@
-import { useConnectionStore } from "@/stores/connection-store";
+import { useConnectionStore, useIsConnected } from "@/stores/connection-store";
 import { Database, Plus, ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 export function HomeView() {
-  const { isConnected, connections } = useConnectionStore();
+  const { connections } = useConnectionStore();
+  const isConnected = useIsConnected();
   const navigate = useNavigate();
 
   if (!isConnected) {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useConnectionStore } from "@/stores/connection-store";
+import { useConnectionStore, useIsConnected, useActiveSchemas } from "@/stores/connection-store";
 import { getSchemas, getTables, getColumns } from "@/lib/tauri";
 import type { TableInfo, ColumnInfo } from "@/lib/tauri";
 import {
@@ -26,8 +26,10 @@ interface BreadcrumbState {
 }
 
 export function SchemaView() {
-  const { activeConnectionId, isConnected, schemas, setSchemas } =
+  const { activeConnectionId, setSchemas } =
     useConnectionStore();
+  const isConnected = useIsConnected();
+  const schemas = useActiveSchemas();
   const [tree, setTree] = useState<Record<string, TreeNode>>({});
   const [selectedColumn, setSelectedColumn] = useState<ColumnInfo | null>(null);
   const [breadcrumb, setBreadcrumb] = useState<BreadcrumbState>({

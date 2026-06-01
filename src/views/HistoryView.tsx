@@ -1,21 +1,24 @@
 import { useState, useEffect } from "react";
-import { useConnectionStore } from "@/stores/connection-store";
+import { useConnectionStore, useIsConnected } from "@/stores/connection-store";
 import { getQueryHistory } from "@/lib/tauri";
 import type { QueryHistoryEntry } from "@/lib/tauri";
-import { CheckCircle2, XCircle, Clock, Search, Copy } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, Search, Copy, Database } from "lucide-react";
 
 export function HistoryView() {
-  const { activeConnectionId, isConnected } = useConnectionStore();
+  const { activeConnectionId, connections } = useConnectionStore();
+  const isConnected = useIsConnected();
   const [history, setHistory] = useState<QueryHistoryEntry[]>([]);
   const [search, setSearch] = useState("");
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [filterConnId, setFilterConnId] = useState<string>("__current__");
 
   useEffect(() => {
-    if (!activeConnectionId || !isConnected) return;
-    getQueryHistory(activeConnectionId, 200)
+    if (!isConnected) return;
+    const connId = filterConnId === "__all__" ? undefined : filterConnId === "__current__" ? activeConnectionId ?? undefined : filterConnId;
+    getQueryHistory(connId, 500)
       .then(setHistory)
       .catch(console.error);
-  }, [activeConnectionId, isConnected]);
+  }, [activeConnectionId, isConnected, filterConnId]);
 
   const filtered = search
     ? history.filter(
@@ -31,6 +34,11 @@ export function HistoryView() {
     setTimeout(() => setCopiedId(null), 1500);
   };
 
+  const getConnectionName = (connId: string) => {
+    const conn = connections.find((c) => c.id === connId);
+    return conn ? conn.name : connId.slice(0, 8);
+  };
+
   if (!isConnected) {
     return (
       <div style={{ display: "flex", height: "100%", alignItems: "center", justifyContent: "center", padding: "32px", fontSize: "14px", color: "var(--color-text-muted)" }}>
@@ -41,10 +49,35 @@ export function HistoryView() {
 
   return (
     <div style={{ display: "flex", height: "100%", flexDirection: "column" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "16px", borderBottom: "1px solid var(--color-border)", padding: "14px 20px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "12px", borderBottom: "1px solid var(--color-border)", padding: "14px 20px" }}>
         <h1 style={{ fontSize: "14px", fontWeight: 600, color: "var(--color-text-primary)", flexShrink: 0 }}>
           Query History
         </h1>
+
+        {/* Connection filter */}
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+          <Database size={12} style={{ color: "var(--color-text-muted)" }} />
+          <select
+            value={filterConnId}
+            onChange={(e) => setFilterConnId(e.target.value)}
+            style={{
+              borderRadius: "6px",
+              border: "1px solid var(--color-border)",
+              backgroundColor: "var(--color-bg-tertiary)",
+              padding: "4px 8px",
+              fontSize: "12px",
+              color: "var(--color-text-primary)",
+              outline: "none",
+            }}
+          >
+            <option value="__current__">Current connection</option>
+            <option value="__all__">All connections</option>
+            {connections.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </div>
+
         <div style={{ display: "flex", flex: 1, alignItems: "center", gap: "8px", borderRadius: "8px", border: "1px solid var(--color-border)", backgroundColor: "var(--color-bg-tertiary)", padding: "6px 12px" }}>
           <Search size={12} style={{ color: "var(--color-text-muted)", flexShrink: 0 }} />
           <input
@@ -93,6 +126,12 @@ export function HistoryView() {
                     <span>
                       {entry.row_count} row{entry.row_count !== 1 ? "s" : ""}
                     </span>
+                    {filterConnId === "__all__" && (
+                      <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                        <Database size={10} />
+                        {getConnectionName(entry.connection_id)}
+                      </span>
+                    )}
                     <span>{new Date(entry.created_at).toLocaleString()}</span>
                   </div>
                   {entry.error_message && (

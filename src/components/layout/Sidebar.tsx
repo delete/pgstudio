@@ -3,14 +3,14 @@ import { NavLink } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
   Home,
-  Table2,
-  TerminalSquare,
   Database,
+  TerminalSquare,
   History,
   Star,
   Bot,
   Sparkles,
   Plug,
+  ArrowLeftRight,
 } from "lucide-react";
 
 interface NavItem {
@@ -21,11 +21,11 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { to: "/", icon: Home, label: "Home" },
-  { to: "/tables", icon: Table2, label: "Table Editor" },
+  { to: "/tables", icon: Database, label: "Database" },
   { to: "/sql", icon: TerminalSquare, label: "SQL Editor" },
-  { to: "/schema", icon: Database, label: "Schema Browser" },
   { to: "/history", icon: History, label: "Query History" },
   { to: "/saved", icon: Star, label: "Saved Queries" },
+  { to: "/migration", icon: ArrowLeftRight, label: "Migration" },
 ];
 
 const bottomItems: NavItem[] = [

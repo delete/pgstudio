@@ -15,6 +15,7 @@ pub struct AIConfig {
 pub enum AIProvider {
     Anthropic,
     OpenAI,
+    Google,
 }
 
 impl Default for AIConfig {
@@ -150,6 +151,7 @@ impl AIService {
         match config.provider {
             AIProvider::Anthropic => self.call_anthropic(config, system, user_message).await,
             AIProvider::OpenAI => self.call_openai(config, system, user_message).await,
+            AIProvider::Google => self.call_google_gemini(config, system, user_message).await,
         }
     }
 
@@ -229,6 +231,65 @@ impl AIService {
             .as_str()
             .unwrap_or("")
             .to_string();
+        Ok(content)
+    }
+
+    async fn call_google_gemini(
+        &self,
+        config: &AIConfig,
+        system: &str,
+        user_message: &str,
+    ) -> Result<String> {
+        let body = serde_json::json!({
+            "systemInstruction": {
+                "parts": [
+                    { "text": system }
+                ]
+            },
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        { "text": user_message }
+                    ]
+                }
+            ]
+        });
+
+        let endpoint = format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+            config.model, config.api_key
+        );
+
+        let resp = self
+            .http_client
+            .post(endpoint)
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        let text = resp.text().await?;
+
+        if !status.is_success() {
+            return Err(anyhow::anyhow!("Gemini API error ({}): {}", status, text));
+        }
+
+        let json: serde_json::Value = serde_json::from_str(&text)?;
+        let content = json["candidates"]
+            .as_array()
+            .and_then(|candidates| candidates.first())
+            .and_then(|candidate| candidate["content"]["parts"].as_array())
+            .map(|parts| {
+                parts
+                    .iter()
+                    .filter_map(|part| part["text"].as_str())
+                    .collect::<Vec<_>>()
+                    .join("")
+            })
+            .unwrap_or_default();
+
         Ok(content)
     }
 }

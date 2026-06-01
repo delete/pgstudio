@@ -4,15 +4,19 @@ import { aiConfigure } from "@/lib/tauri";
 import {
   ANTHROPIC_MODELS,
   OPENAI_MODELS,
+  GEMINI_MODELS,
   DEFAULT_ANTHROPIC_MODEL,
   DEFAULT_OPENAI_MODEL,
+  DEFAULT_GEMINI_MODEL,
 } from "@/lib/models";
 import { Bot, Sparkles, ArrowRight, ChevronDown } from "lucide-react";
+
+type AIProvider = "anthropic" | "openai" | "google";
 
 export function OnboardingView() {
   const { setConfigured, setOnboardingDone } = useAIStore();
   const [step, setStep] = useState<"welcome" | "provider">("welcome");
-  const [provider, setProvider] = useState<"anthropic" | "openai">("anthropic");
+  const [provider, setProvider] = useState<AIProvider>("anthropic");
   const [model, setModel] = useState(DEFAULT_ANTHROPIC_MODEL);
   const [customModel, setCustomModel] = useState("");
   const [isCustomModel, setIsCustomModel] = useState(false);
@@ -20,13 +24,23 @@ export function OnboardingView() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const models = provider === "anthropic" ? ANTHROPIC_MODELS : OPENAI_MODELS;
+  const models = provider === "anthropic"
+    ? ANTHROPIC_MODELS
+    : provider === "openai"
+      ? OPENAI_MODELS
+      : GEMINI_MODELS;
 
-  const handleProviderChange = (p: "anthropic" | "openai") => {
+  const handleProviderChange = (p: AIProvider) => {
     setProvider(p);
     setIsCustomModel(false);
     setCustomModel("");
-    setModel(p === "anthropic" ? DEFAULT_ANTHROPIC_MODEL : DEFAULT_OPENAI_MODEL);
+    setModel(
+      p === "anthropic"
+        ? DEFAULT_ANTHROPIC_MODEL
+        : p === "openai"
+          ? DEFAULT_OPENAI_MODEL
+          : DEFAULT_GEMINI_MODEL,
+    );
   };
 
   const handleModelSelect = (value: string) => {
@@ -168,7 +182,7 @@ export function OnboardingView() {
             <label style={{ display: "block", fontSize: "11px", fontWeight: 500, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "10px" }}>
               Provider
             </label>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "10px" }}>
               <button
                 onClick={() => handleProviderChange("anthropic")}
                 style={{
@@ -213,6 +227,28 @@ export function OnboardingView() {
                 </span>
                 <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>GPT</span>
               </button>
+              <button
+                onClick={() => handleProviderChange("google")}
+                style={{
+                  borderWidth: "2px",
+                  borderStyle: "solid",
+                  borderRadius: "12px",
+                  padding: "14px 16px",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: "6px",
+                  borderColor: provider === "google" ? "var(--color-accent)" : "var(--color-border)",
+                  backgroundColor: provider === "google" ? "rgba(62,207,142,0.05)" : "transparent",
+                  transition: "all 0.15s",
+                  cursor: "pointer",
+                }}
+              >
+                <span style={{ fontSize: "14px", fontWeight: 600, color: provider === "google" ? "var(--color-accent)" : "var(--color-text-secondary)" }}>
+                  Google
+                </span>
+                <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>Gemini</span>
+              </button>
             </div>
           </div>
 
@@ -253,7 +289,7 @@ export function OnboardingView() {
               <input
                 value={customModel}
                 onChange={(e) => setCustomModel(e.target.value)}
-                placeholder="Enter model ID (e.g. claude-3-opus-20240229)"
+                placeholder="Enter model ID (e.g. gemini-2.5-flash-lite)"
                 style={{
                   width: "100%",
                   borderRadius: "12px",
@@ -281,7 +317,9 @@ export function OnboardingView() {
               placeholder={
                 provider === "anthropic"
                   ? "sk-ant-api03-..."
-                  : "sk-proj-..."
+                  : provider === "openai"
+                    ? "sk-proj-..."
+                    : "AIza..."
               }
               style={{
                 width: "100%",

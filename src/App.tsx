@@ -7,10 +7,10 @@ import { OnboardingView } from "@/views/OnboardingView";
 import { HomeView } from "@/views/HomeView";
 import { SQLEditorView } from "@/views/SQLEditorView";
 import { TableEditorView } from "@/views/TableEditorView";
-import { SchemaView } from "@/views/SchemaView";
 import { HistoryView } from "@/views/HistoryView";
 import { SavedQueriesView } from "@/views/SavedQueriesView";
 import { AIView } from "@/views/AIView";
+import { MigrationView } from "@/views/MigrationView";
 import { ConnectionView } from "@/views/ConnectionView";
 import { AISettingsView } from "@/views/AISettingsView";
 import { useAIStore } from "@/stores/ai-store";
@@ -65,10 +65,10 @@ export default function App() {
             <Route path="/" element={<HomeView />} />
             <Route path="/sql" element={<SQLEditorView />} />
             <Route path="/tables" element={<TableEditorView />} />
-            <Route path="/schema" element={<SchemaView />} />
             <Route path="/history" element={<HistoryView />} />
             <Route path="/saved" element={<SavedQueriesView />} />
             <Route path="/ai" element={<AIView />} />
+            <Route path="/migration" element={<MigrationView />} />
             <Route path="/settings" element={<ConnectionView />} />
             <Route path="/ai-settings" element={<AISettingsView />} />
           </Routes>

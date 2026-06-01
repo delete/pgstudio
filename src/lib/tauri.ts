@@ -37,6 +37,11 @@ export interface ColumnDef {
   data_type: string;
 }
 
+export interface DatabaseInfo {
+  name: string;
+  is_current: boolean;
+}
+
 export interface SchemaInfo {
   name: string;
   owner: string;
@@ -60,6 +65,51 @@ export interface ColumnInfo {
   foreign_table: string | null;
   foreign_column: string | null;
   ordinal_position: number;
+}
+
+export interface ConstraintInfo {
+  name: string;
+  constraint_type: string;
+  columns: string[];
+  definition: string;
+  foreign_table: string | null;
+  foreign_columns: string | null;
+}
+
+export interface IndexInfo {
+  name: string;
+  columns: string;
+  is_unique: boolean;
+  is_primary: boolean;
+  index_type: string;
+  definition: string;
+  size: string;
+}
+
+export interface TriggerInfo {
+  name: string;
+  event: string;
+  timing: string;
+  orientation: string;
+  function_name: string;
+  definition: string;
+  enabled: boolean;
+}
+
+export interface RuleInfo {
+  name: string;
+  event: string;
+  is_instead: boolean;
+  definition: string;
+}
+
+export interface PolicyInfo {
+  name: string;
+  command: string;
+  permissive: boolean;
+  roles: string[];
+  using_expr: string | null;
+  check_expr: string | null;
 }
 
 export interface QueryHistoryEntry {
@@ -98,6 +148,12 @@ export const executeQuery = (connectionId: string, sql: string) =>
   invoke<QueryResult>("execute_query", { connectionId, sql });
 
 // Schema introspection
+export const getDatabases = (connectionId: string) =>
+  invoke<DatabaseInfo[]>("get_databases", { connectionId });
+
+export const switchDatabase = (connectionId: string, database: string) =>
+  invoke<void>("switch_database", { connectionId, database });
+
 export const getSchemas = (connectionId: string) =>
   invoke<SchemaInfo[]>("get_schemas", { connectionId });
 
@@ -107,13 +163,30 @@ export const getTables = (connectionId: string, schema: string) =>
 export const getColumns = (connectionId: string, schema: string, table: string) =>
   invoke<ColumnInfo[]>("get_columns", { connectionId, schema, table });
 
+export const getConstraints = (connectionId: string, schema: string, table: string) =>
+  invoke<ConstraintInfo[]>("get_constraints", { connectionId, schema, table });
+
+export const getIndexes = (connectionId: string, schema: string, table: string) =>
+  invoke<IndexInfo[]>("get_indexes", { connectionId, schema, table });
+
+export const getTriggers = (connectionId: string, schema: string, table: string) =>
+  invoke<TriggerInfo[]>("get_triggers", { connectionId, schema, table });
+
+export const getRules = (connectionId: string, schema: string, table: string) =>
+  invoke<RuleInfo[]>("get_rules", { connectionId, schema, table });
+
+export const getPolicies = (connectionId: string, schema: string, table: string) =>
+  invoke<PolicyInfo[]>("get_policies", { connectionId, schema, table });
+
 export const getTableData = (
   connectionId: string,
   schema: string,
   table: string,
   limit?: number,
   offset?: number,
-) => invoke<QueryResult>("get_table_data", { connectionId, schema, table, limit, offset });
+  sortColumn?: string | null,
+  sortDirection?: string | null,
+) => invoke<QueryResult>("get_table_data", { connectionId, schema, table, limit, offset, sortColumn, sortDirection });
 
 // Connection storage
 export const saveConnection = (input: ConnectionInput) =>
@@ -126,8 +199,11 @@ export const deleteConnection = (id: string) =>
   invoke<void>("delete_connection", { id });
 
 // Query history
-export const getQueryHistory = (connectionId: string, limit?: number) =>
+export const getQueryHistory = (connectionId?: string, limit?: number) =>
   invoke<QueryHistoryEntry[]>("get_query_history", { connectionId, limit });
+
+export const searchTableHistory = (connectionId: string, tableName: string, limit?: number) =>
+  invoke<QueryHistoryEntry[]>("search_table_history", { connectionId, tableName, limit });
 
 // Saved queries
 export const saveQueryCmd = (
@@ -182,6 +258,14 @@ export const aiConfigure = (input: AIConfigInput) =>
 export const aiStatus = () =>
   invoke<boolean>("ai_status");
 
+export interface AIConfigResponse {
+  provider: string;
+  model: string;
+}
+
+export const aiGetConfig = () =>
+  invoke<AIConfigResponse | null>("ai_get_config");
+
 export interface AiPromptSuggestion {
   prompt: string;
   generated_sql: string;
@@ -213,3 +297,60 @@ export const aiComplete = (
 
 export const aiChat = (message: string, schemaContext: SchemaContext) =>
   invoke<string>("ai_chat", { message, schemaContext });
+
+// Migration commands (pg_dump / pg_restore)
+
+export interface PgToolsStatus {
+  pg_dump: string | null;
+  pg_restore: string | null;
+  version: string | null;
+}
+
+export interface DumpResult {
+  success: boolean;
+  file_path: string;
+  size_bytes: number;
+  error: string | null;
+}
+
+export interface RestoreResult {
+  success: boolean;
+  error: string | null;
+}
+
+export interface TransferResult {
+  success: boolean;
+  error: string | null;
+}
+
+export const detectPgTools = () =>
+  invoke<PgToolsStatus>("detect_pg_tools");
+
+export const pgDumpToFile = (
+  connectionId: string,
+  format: string,
+  schemaOnly: boolean,
+  tables?: string[],
+  outputPath?: string,
+) => invoke<DumpResult>("pg_dump_to_file", { connectionId, format, schemaOnly, tables, outputPath });
+
+export const pgRestoreFromFile = (
+  connectionId: string,
+  filePath: string,
+  clean: boolean,
+  schemaOnly: boolean,
+) => invoke<RestoreResult>("pg_restore_from_file", { connectionId, filePath, clean, schemaOnly });
+
+export const pgTransfer = (
+  sourceConnectionId: string,
+  targetConnectionId: string,
+  tables?: string[],
+  schemaOnly?: boolean,
+  clean?: boolean,
+) => invoke<TransferResult>("pg_transfer", {
+  sourceConnectionId,
+  targetConnectionId,
+  tables,
+  schemaOnly: schemaOnly ?? false,
+  clean: clean ?? false,
+});

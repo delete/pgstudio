@@ -9,6 +9,7 @@ import {
   testConnection,
   getSchemas,
   getFullSchema,
+  getDatabases,
 } from "@/lib/tauri";
 import type { ConnectionInput } from "@/lib/tauri";
 import { Plus, Trash2, Plug, Pencil, CheckCircle2, AlertCircle } from "lucide-react";
@@ -88,15 +89,18 @@ export function ConnectionView() {
 
       try {
         await connect(input);
-        store.setActiveConnection(connId);
-        store.setConnected(true);
+        store.connectTo(connId);
 
-        const [schemas, schemaCtx] = await Promise.all([
+        const [schemas, schemaCtx, databases] = await Promise.all([
           getSchemas(connId),
           getFullSchema(connId),
+          getDatabases(connId),
         ]);
         store.setSchemas(schemas);
         store.setSchemaContext(schemaCtx);
+        store.setDatabases(databases);
+        const currentDb = databases.find((d) => d.is_current);
+        store.setActiveDatabase(currentDb?.name ?? conn.database);
         navigate("/sql");
       } catch (e) {
         setConnectError(String(e));

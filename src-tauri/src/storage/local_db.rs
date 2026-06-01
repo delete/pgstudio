@@ -229,6 +229,54 @@ impl LocalDb {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
+    pub async fn get_all_history(&self, limit: i64) -> Result<Vec<QueryHistoryEntry>> {
+        let db = self.conn.lock().await;
+        let mut stmt = db.prepare(
+            "SELECT id, connection_id, sql, execution_time_ms, row_count, success, error_message, created_at
+             FROM query_history
+             ORDER BY created_at DESC
+             LIMIT ?1",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![limit], |row| {
+            Ok(QueryHistoryEntry {
+                id: row.get(0)?,
+                connection_id: row.get(1)?,
+                sql: row.get(2)?,
+                execution_time_ms: row.get(3)?,
+                row_count: row.get(4)?,
+                success: row.get(5)?,
+                error_message: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub async fn search_table_history(&self, connection_id: &str, table_name: &str, limit: i64) -> Result<Vec<QueryHistoryEntry>> {
+        let db = self.conn.lock().await;
+        let pattern = format!("%{}%", table_name);
+        let mut stmt = db.prepare(
+            "SELECT id, connection_id, sql, execution_time_ms, row_count, success, error_message, created_at
+             FROM query_history
+             WHERE connection_id = ?1 AND sql LIKE ?2 AND success = 1
+             ORDER BY created_at DESC
+             LIMIT ?3",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![connection_id, pattern, limit], |row| {
+            Ok(QueryHistoryEntry {
+                id: row.get(0)?,
+                connection_id: row.get(1)?,
+                sql: row.get(2)?,
+                execution_time_ms: row.get(3)?,
+                row_count: row.get(4)?,
+                success: row.get(5)?,
+                error_message: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
     pub async fn save_query(&self, query: &SavedQuery) -> Result<i64> {
         let db = self.conn.lock().await;
         db.execute(
