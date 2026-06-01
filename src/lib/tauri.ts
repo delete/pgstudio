@@ -246,7 +246,17 @@ export interface AIConfigInput {
   provider: string;
   api_key: string;
   model?: string;
+  effort?: string;
 }
+
+export interface CodexStatus {
+  available: boolean;
+  account_id?: string | null;
+  error?: string | null;
+}
+
+export const aiCodexStatus = () =>
+  invoke<CodexStatus>("ai_codex_status");
 
 // File export
 export const exportFile = (content: string, defaultName: string) =>
@@ -261,6 +271,7 @@ export const aiStatus = () =>
 export interface AIConfigResponse {
   provider: string;
   model: string;
+  effort?: string | null;
 }
 
 export const aiGetConfig = () =>

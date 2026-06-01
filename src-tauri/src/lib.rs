@@ -26,10 +26,13 @@ pub fn run() {
 
                 // Restore AI config from local database
                 let local_db = app_handle.state::<storage::LocalDb>();
-                if let Ok(Some((provider_str, model, api_key))) = local_db.get_ai_config().await {
+                if let Ok(Some((provider_str, model, api_key, effort))) =
+                    local_db.get_ai_config().await
+                {
                     let provider = match provider_str.as_str() {
                         "openai" => ai::AIProvider::OpenAI,
                         "google" => ai::AIProvider::Google,
+                        "codex" => ai::AIProvider::Codex,
                         _ => ai::AIProvider::Anthropic,
                     };
                     let ai_service = app_handle.state::<ai::AIService>();
@@ -38,6 +41,7 @@ pub fn run() {
                             provider,
                             api_key,
                             model,
+                            effort,
                         })
                         .await;
                 }
@@ -73,6 +77,7 @@ pub fn run() {
             commands::ai_configure,
             commands::ai_status,
             commands::ai_get_config,
+            commands::ai_codex_status,
             commands::ai_nl_to_sql,
             commands::ai_explain,
             commands::ai_optimize,

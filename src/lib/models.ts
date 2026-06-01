@@ -41,6 +41,24 @@ export const GEMINI_MODELS: ModelOption[] = [
   { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro", description: "Best quality for complex tasks" },
 ];
 
+// Codex (ChatGPT login) — models entitled on a ChatGPT account, validated against
+// the backend. Names mirror the Codex CLI model picker.
+export const CODEX_MODELS: ModelOption[] = [
+  { value: "gpt-5.5", label: "GPT-5.5", description: "Frontier — complex coding, research, real-world work" },
+  { value: "gpt-5.4", label: "GPT-5.4", description: "Strong model for everyday work" },
+  { value: "gpt-5.4-mini", label: "GPT-5.4 Mini", description: "Small, fast, cost-efficient" },
+  { value: "gpt-5.3-codex", label: "GPT-5.3 Codex", description: "Coding-optimized" },
+  { value: "gpt-5.2", label: "GPT-5.2", description: "Professional & long-running agents" },
+];
+
+export const EFFORT_OPTIONS: ModelOption[] = [
+  { value: "low", label: "Low", description: "Fastest, least reasoning" },
+  { value: "medium", label: "Medium", description: "Balanced" },
+  { value: "high", label: "High", description: "Most reasoning, slowest" },
+];
+
 export const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6";
 export const DEFAULT_OPENAI_MODEL = "gpt-4.1";
 export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-lite";
+export const DEFAULT_CODEX_MODEL = "gpt-5.5";
+export const DEFAULT_EFFORT = "medium";
