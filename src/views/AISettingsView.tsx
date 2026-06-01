@@ -34,7 +34,7 @@ const DEFAULT_MODEL_FOR: Record<AIProvider, string> = {
 };
 
 export function AISettingsView() {
-  const { configured, setConfigured } = useAIStore();
+  const { configured, setConfigured, setAiConfig } = useAIStore();
   const [provider, setProvider] = useState<AIProvider>("anthropic");
   const [model, setModel] = useState(DEFAULT_ANTHROPIC_MODEL);
   const [customModel, setCustomModel] = useState("");
@@ -55,6 +55,7 @@ export function AISettingsView() {
     aiGetConfig().then((config) => {
       if (!config) return;
       setCurrentConfig(config);
+      setAiConfig(config);
       const p = (["anthropic", "openai", "google", "codex"].includes(config.provider)
         ? config.provider
         : "anthropic") as AIProvider;
@@ -132,7 +133,9 @@ export function AISettingsView() {
       });
       setConfigured(true);
       setSuccess(true);
-      setCurrentConfig({ provider, model: finalModel, effort: isCodex ? effort : undefined });
+      const saved = { provider, model: finalModel, effort: isCodex ? effort : undefined };
+      setCurrentConfig(saved);
+      setAiConfig(saved);
       setApiKey("");
       // Go back to summary after a brief delay
       setTimeout(() => { setEditing(false); setSuccess(false); }, 1200);

@@ -15,10 +15,10 @@ import { ConnectionView } from "@/views/ConnectionView";
 import { AISettingsView } from "@/views/AISettingsView";
 import { useAIStore } from "@/stores/ai-store";
 import { useConnectionStore } from "@/stores/connection-store";
-import { aiStatus, listConnections } from "@/lib/tauri";
+import { aiStatus, aiGetConfig, listConnections } from "@/lib/tauri";
 
 export default function App() {
-  const { onboardingDone, setOnboardingDone, setConfigured } = useAIStore();
+  const { onboardingDone, setOnboardingDone, setConfigured, setAiConfig } = useAIStore();
   const { setConnections } = useConnectionStore();
 
   // Check if AI is already configured on launch
@@ -31,7 +31,8 @@ export default function App() {
         }
       })
       .catch(() => {});
-  }, [setConfigured, setOnboardingDone]);
+    aiGetConfig().then(setAiConfig).catch(() => {});
+  }, [setConfigured, setOnboardingDone, setAiConfig]);
 
   // Load saved connections on launch
   useEffect(() => {
